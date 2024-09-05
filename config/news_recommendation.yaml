@@ -1,0 +1,47 @@
+app: "train"
+retexo: true
+
+# Data / Dataset
+dataset_dir: ../retexo-datasets
+train_sampler: "MultiLayerFull"
+num_partitions: 1
+part_obj: "vol"
+force_reload: false
+
+# Model
+num_layers: 2
+local_epochs: 1
+gnn_input_dim: 256
+hidden_dim: 256
+adaptor_hidden: 256
+dropout: 0.2
+
+gnn_neg_ratio: 4
+gnn_kl_weight: 0
+
+# Training parameters
+batching: false
+batch_size: 2000
+num_rounds: [7000, 7000, 7000]
+eval_every: [25, 25, 25]
+eval_after: [0, 0, 0]
+eval_size: 0 # 0 for Full validation set
+loss_func: "cross_entropy"
+cross_score: false
+exp_lr: false
+learning_rate: [1e-4, 1e-4, 1e-4]
+warmup_rounds: 0
+seed: 999
+
+# Evaluation
+momentum: 0.9
+weight_decay: 0.0005
+cache_size: 5
+wandb_mode: "online"
+best_model: true
+measure_dv: false
+
+# Device
+device: "cuda"
+controller_addr: 127.0.0.1
+controller_port: "10100"
