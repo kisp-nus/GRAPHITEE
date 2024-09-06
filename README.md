@@ -55,7 +55,7 @@ is usually compatible with only 1-2 torch versions.
 
 All parameters are adjustable in the file `config/news_recommendation.yaml`.
 The first run will inevitably take some time as the whole dataset needs to be
-downloaded and processed. _[wandb](wandb.ai)_ is enabled by default for online logs
+downloaded and processed. _[WandB](https://wandb.ai)_ is enabled by default for online logs
 and nice representation of the data. If you stopped the programe while it was
 processing the data for the first time, you might want to re-run it using the flag
 `force_reload=true`.
@@ -92,7 +92,7 @@ Just try it out! See `trainer/news_trainer.py` for the complete training protoco
 simply replace with you own model or create a new trainer if you want to make specific
 changes. You might have to tweak some parameters, some things to consider are:
 
-- Training Full-Graph instead of mini-batches usually requires many more epochs. Log your evaluation metrics on [WanDB](wandb.ai) to check the convergence easily.
+- Training Full-Graph instead of mini-batches usually requires many more epochs. Log your evaluation metrics on [WandB](https://wandb.ai) to check the convergence easily.
 - The dimensions are a very important factor, at first, try to use the same amount of dimensions each layer.
 - Try different learning rates, and different rate schedulers, in Full-Graph this can
   have a massive impact on the performance.
