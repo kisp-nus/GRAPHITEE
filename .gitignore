@@ -1,0 +1,4 @@
+/outputs/
+/wandb/
+/data/data/*
+*/__pycache__/*

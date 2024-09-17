@@ -2,7 +2,10 @@ app: "train"
 retexo: true
 
 # Data / Dataset
-dataset_dir: ../retexo-datasets
+dataset_dir: ./data/data/MINDsmall
+dataset_name: mind
+mind_version: "small"
+
 train_sampler: "MultiLayerFull"
 num_partitions: 1
 part_obj: "vol"
@@ -22,14 +25,14 @@ gnn_kl_weight: 0
 # Training parameters
 batching: false
 batch_size: 2000
-num_rounds: [7000, 7000, 7000]
-eval_every: [25, 25, 25]
+num_rounds: [5000, 5000, 5000]
+eval_every: [50, 50, 50]
 eval_after: [0, 0, 0]
-eval_size: 0 # 0 for Full validation set
+eval_size: 5000 # 0 for Full validation set (TODO change to 0)
 loss_func: "cross_entropy"
 cross_score: false
-exp_lr: false
-learning_rate: [1e-4, 1e-4, 1e-4]
+exp_lr: true
+learning_rate: [5e-4,1e-3,1e-3]
 warmup_rounds: 0
 seed: 999
 
@@ -40,8 +43,10 @@ cache_size: 5
 wandb_mode: "online"
 best_model: true
 measure_dv: false
+quick_eval: true
 
 # Device
 device: "cuda"
+backend: "gloo"
 controller_addr: 127.0.0.1
 controller_port: "10100"

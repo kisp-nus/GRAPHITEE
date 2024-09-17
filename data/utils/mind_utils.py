@@ -6,16 +6,11 @@ import time
 import json
 from tqdm import tqdm
 import time
-import pickle
 from pathlib import Path
 from collections import OrderedDict
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
 from keybert import KeyBERT
 from sentence_transformers import SentenceTransformer
-from data.utils.node2vec.model import Node2vecModel
-from data.utils.node2vec.utils import load_graph, parse_arguments
-
 
 
 def strid_intid(str_id):
@@ -108,9 +103,12 @@ def parse_entity_record(entities):
 def tokenize_news(train_news_df, dev_news_df, newsid2nid, save_dir):
     print('tokenize_news')
     nw_link = []  # [nid, wid]
-    sentence_model = SentenceTransformer("all-MiniLM-L6-v2")#all-mpnet-base-v2
-    train_keywords = np.concatenate([str(kws).split(' ') for kws in train_news_df['Keywords'].values])
-    dev_keywords = np.concatenate([str(kws).split(' ') for kws in dev_news_df['Keywords'].values])
+    sentence_model = SentenceTransformer(
+        "all-MiniLM-L6-v2")  # all-mpnet-base-v2
+    train_keywords = np.concatenate(
+        [str(kws).split(' ') for kws in train_news_df['Keywords'].values])
+    dev_keywords = np.concatenate([str(kws).split(' ')
+                                  for kws in dev_news_df['Keywords'].values])
     words = np.unique(np.concatenate([train_keywords, dev_keywords]))
     word_emb = sentence_model.encode(words)
     word2wid = {str(v): k for k, v in enumerate(words)}  # word -> wid
@@ -138,13 +136,18 @@ def get_news_entity_link(news_df, newsid2nid, entity_embedding_dict, save_dir, f
             nid = newsid2nid[news_df.index[i]]
             title_entities = news_df.iloc[i]['Title-Entities']
             abstract_entities = news_df.iloc[i]['Abstract-Entities']
-            title_entities_list = parse_entity_record(title_entities)  # [WikidataIds]
-            abstract_entities_list = parse_entity_record(abstract_entities)  # [WikidataIds]
-            entities_list = np.unique(np.concatenate([np.array(title_entities_list), np.array(abstract_entities_list)]))
-            entities_list = [ett_id for ett_id in entities_list if ett_id in entity_embedding_dict]  # filtering entities without embedding
+            title_entities_list = parse_entity_record(
+                title_entities)  # [WikidataIds]
+            abstract_entities_list = parse_entity_record(
+                abstract_entities)  # [WikidataIds]
+            entities_list = np.unique(np.concatenate(
+                [np.array(title_entities_list), np.array(abstract_entities_list)]))
+            # filtering entities without embedding
+            entities_list = [
+                ett_id for ett_id in entities_list if ett_id in entity_embedding_dict]
             if len(entities_list) > 0:
                 for ett_id in entities_list:
-                    news_entity_link.append([nid, strid_intid(ett_id)])  
+                    news_entity_link.append([nid, strid_intid(ett_id)])
             else:
                 no_entity_count += 1
         print('>>> News w/o entity: {}/{}'.format(no_entity_count, rows_num))
@@ -178,8 +181,10 @@ def get_user_news_link(behaviors_df, userid2uid, newsid2nid, save_dir, force_rel
         history_actions = np.load('{}/history_actions.npy'.format(save_dir))
         positive_actions = np.load('{}/positive_actions.npy'.format(save_dir))
         negative_actions = np.load('{}/negative_actions.npy'.format(save_dir))
-        session_positive = read_list('{}/session_positive.txt'.format(save_dir))
-        session_negative = read_list('{}/session_negative.txt'.format(save_dir))
+        session_positive = read_list(
+            '{}/session_positive.txt'.format(save_dir))
+        session_negative = read_list(
+            '{}/session_negative.txt'.format(save_dir))
         print('load from files')
     except Exception as e:
         rows_num = behaviors_df.shape[0]
@@ -192,7 +197,7 @@ def get_user_news_link(behaviors_df, userid2uid, newsid2nid, save_dir, force_rel
         session_negative = []  # [[EIDs of negative impressions]]
 
         for i in tqdm(range(rows_num)):  # processing per-record
-            
+
             uid = userid2uid[behaviors_df.iloc[i]['User-ID']]
             pos_link = []  # positive link EIDs of this user
             neg_link = []  # negative link EIDs of this user
@@ -210,14 +215,15 @@ def get_user_news_link(behaviors_df, userid2uid, newsid2nid, save_dir, force_rel
                     state = newsid[-1]
                     newsid = newsid[:-2]
                     if state == '1':
-                        positive_actions.append([uid, newsid2nid[newsid], t])  # node-node for make graph
+                        # node-node for make graph
+                        positive_actions.append([uid, newsid2nid[newsid], t])
                         pos_link.append(positive_id)  # edge id for call it out
                         positive_id += 1
                     else:
                         negative_actions.append([uid, newsid2nid[newsid], t])
                         neg_link.append(negative_id)
                         negative_id += 1
-            
+
             session_positive.append(np.array(pos_link))
             session_negative.append(np.array(neg_link))
 
@@ -246,13 +252,16 @@ def building_training_dataset(session_positive, session_negative, gnn_neg_ratio)
                 nega_sample = []
                 for s in range(int(gnn_neg_ratio / len_neg)):
                     nega_sample.append(neg_link)
-                neg_sample_id = np.random.choice(len_neg, gnn_neg_ratio % len_neg, replace=False)
+                neg_sample_id = np.random.choice(
+                    len_neg, gnn_neg_ratio % len_neg, replace=False)
                 nega_sample.append(neg_link[neg_sample_id])
                 nega_sample = np.concatenate(nega_sample)
             else:
-                neg_sample_id = np.random.choice(len_neg, gnn_neg_ratio, replace=False)
+                neg_sample_id = np.random.choice(
+                    len_neg, gnn_neg_ratio, replace=False)
                 nega_sample = neg_link[neg_sample_id]
-            sampled_datasets.append(np.concatenate([np.array([pos_link[j]]), nega_sample]))
+            sampled_datasets.append(np.concatenate(
+                [np.array([pos_link[j]]), nega_sample]))
     return np.array(sampled_datasets)
 
 
@@ -263,43 +272,55 @@ def load_MIND(save_dir, force_reload=False):  # New Version for v7
         news_file_name = 'preprocessed_news.csv'
         news_file_path = '{}/{}'.format(save_dir, news_file_name)
         news_df = pd.read_csv(news_file_path, sep='\t', index_col='News-ID')
-        news_df['Title-Emb'] = [np.array([float(v) for v in emb_text.replace('\n', '')[1:-1].split()]) for emb_text in news_df['Title-Emb']]
-        news_df['Abstract-Emb'] = [np.array([float(v) for v in emb_text.replace('\n', '')[1:-1].split()]) for emb_text in news_df['Abstract-Emb']]
+        news_df['Title-Emb'] = [np.array([float(v) for v in emb_text.replace(
+            '\n', '')[1:-1].split()]) for emb_text in news_df['Title-Emb']]
+        news_df['Abstract-Emb'] = [np.array([float(v) for v in emb_text.replace(
+            '\n', '')[1:-1].split()]) for emb_text in news_df['Abstract-Emb']]
         print('load from files')
     except Exception as e:
         news_file_name = 'news.tsv'
         news_file_path = '{}/{}'.format(save_dir, news_file_name)
-        news_df = pd.read_csv(news_file_path, sep='\t', names=["News-ID", "Category", "SubCategory", "Title", "Abstract", "URL", "Title-Entities", "Abstract-Entities"], index_col='News-ID')
+        news_df = pd.read_csv(news_file_path, sep='\t', names=[
+                              "News-ID", "Category", "SubCategory", "Title", "Abstract", "URL", "Title-Entities", "Abstract-Entities"], index_col='News-ID')
         news_df['row_index'] = range(news_df.shape[0])
 
         # encoding and keyword extracting
-        sentence_model = SentenceTransformer("all-MiniLM-L6-v2")#all-mpnet-base-v2
+        sentence_model = SentenceTransformer(
+            "all-MiniLM-L6-v2")  # all-mpnet-base-v2
         kw_model = KeyBERT(model=sentence_model)
 
-        title_embedding = sentence_model.encode([str(t) for t in news_df['Title'].values])
-        abstract_embedding = sentence_model.encode([str(t) for t in news_df['Abstract'].values])
+        title_embedding = sentence_model.encode(
+            [str(t) for t in news_df['Title'].values])
+        abstract_embedding = sentence_model.encode(
+            [str(t) for t in news_df['Abstract'].values])
         full_text = []
         for i in range(news_df['Title'].values.shape[0]):
-            full_text.append(str(news_df['Title'].values[i]) + '. ' + str(news_df['Abstract'].values[i]))
-        keywords = kw_model.extract_keywords(full_text, keyphrase_ngram_range=(1, 1), stop_words='english')
+            full_text.append(
+                str(news_df['Title'].values[i]) + '. ' + str(news_df['Abstract'].values[i]))
+        keywords = kw_model.extract_keywords(
+            full_text, keyphrase_ngram_range=(1, 1), stop_words='english')
         keywords = [' '.join(w[0] for w in kw) for kw in keywords]
 
-        news_df['Title-Emb'] = news_df.apply(lambda row: title_embedding[row.row_index], axis=1)
-        news_df['Abstract-Emb'] = news_df.apply(lambda row: abstract_embedding[row.row_index], axis=1)
+        news_df['Title-Emb'] = news_df.apply(
+            lambda row: title_embedding[row.row_index], axis=1)
+        news_df['Abstract-Emb'] = news_df.apply(
+            lambda row: abstract_embedding[row.row_index], axis=1)
         news_df['Keywords'] = keywords
         news_df.to_csv('{}/preprocessed_news.csv'.format(save_dir), sep='\t')
 
     # Load behaviors.tsv
     behaviors_file_name = 'behaviors.tsv'
     behaviors_file_path = '{}/{}'.format(save_dir, behaviors_file_name)
-    behaviors_df = pd.read_csv(behaviors_file_path, sep='\t', names=["Impression-ID", "User-ID", "Time", "History", "Impressions"], index_col='Impression-ID')
+    behaviors_df = pd.read_csv(behaviors_file_path, sep='\t', names=[
+                               "Impression-ID", "User-ID", "Time", "History", "Impressions"], index_col='Impression-ID')
     # Reformat timestamp
     behaviors_df['Time'] = behaviors_df['Time'].apply(parse_time)
     behaviors_df = behaviors_df.sort_values(by=['Time'], na_position='first')
 
     # Load entity_embedding.vec
     entity_embedding_file_name = 'entity_embedding.vec'
-    entity_embedding_file_path = '{}/{}'.format(save_dir, entity_embedding_file_name)
+    entity_embedding_file_path = '{}/{}'.format(
+        save_dir, entity_embedding_file_name)
     entity_embedding_dict = {}
     with open(entity_embedding_file_path, 'r') as f:
         for line in f:
@@ -311,31 +332,3 @@ def load_MIND(save_dir, force_reload=False):  # New Version for v7
     return behaviors_df, news_df, entity_embedding_dict
 
 
-def node2vec(mind_dgl, save_dir, force_reload=False):
-    try:
-        if force_reload:
-            raise Exception('Force Reload.')
-        node2vec = torch.load('{}/MINDsmall/node2vec.pth'.format(save_dir))
-        print('load from files')
-    except Exception as e:
-        args = parse_arguments()
-        graph = load_graph(mind_dgl)
-        trainer = Node2vecModel(graph,
-                    embedding_dim=args.embedding_dim,
-                    walk_length=args.walk_length,
-                    p=args.p,
-                    q=args.q,
-                    num_walks=args.num_walks,
-                    device=args.device)
-        trainer.train(epochs=args.epochs, batch_size=args.batch_size, learning_rate=1e-2)
-        node2vec = torch.load('{}/MINDsmall/node2vec.pth'.format(save_dir))
-    # entity2vec = node2vec[:mind_dgl.num_node['entity']]
-    # node2vec = node2vec[mind_dgl.num_node['entity']:]
-    news2vec = node2vec[:mind_dgl.num_node['news']]
-    node2vec = node2vec[mind_dgl.num_node['news']:]
-    user2vec = node2vec[:mind_dgl.num_node['user']]
-    node2vec = node2vec[mind_dgl.num_node['user']:]
-    # word2vec = node2vec[:mind_dgl.num_node['word']]
-    # node2vec = node2vec[mind_dgl.num_node['word']:]
-    return news2vec, user2vec
-    # return entity2vec, news2vec, user2vec, word2vec

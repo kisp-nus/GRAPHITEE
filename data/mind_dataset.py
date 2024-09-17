@@ -2,7 +2,6 @@ import random
 from omegaconf import DictConfig
 import torch
 from torch.utils.data import Dataset, DataLoader, Sampler
-import tqdm
 import os
 import time
 import json
@@ -10,19 +9,20 @@ import numpy as np
 import dgl
 from dgl import save_graphs, load_graphs
 from dgl.data import DGLDataset
-from dgl.data.utils import save_info, load_info, get_download_dir
+from dgl.data.utils import save_info, load_info
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
-from data.utils.mind_utils import seq_list, seq_numpy, unseq_list, unseq_numpy
-from data.utils.mind_utils import load_MIND, get_news_list, get_user_news_link, get_news_entity_link, tokenize_news, building_training_dataset, node2vec
+from data.utils.mind_utils import seq_list, unseq_list
+from data.utils.mind_utils import load_MIND, get_news_list, get_user_news_link, get_news_entity_link, building_training_dataset
 
 
 class MIND_DGL(DGLDataset):
     """
     MIND DGL Graph Constructor v7
-    
+
     Credits: DivHGNN's implementation by @GuangpingZhang (Github).
+    https://github.com/aSeriousCoder/DivHGNN/tree/main/model
     """
 
     def __init__(
@@ -41,7 +41,7 @@ class MIND_DGL(DGLDataset):
         self._raw_dir = cfg["dataset_dir"]
         self._save_dir = cfg["dataset_dir"]
         self._indices = None
-        
+
         self.cfg = cfg
 
         self._graph = None
@@ -73,26 +73,36 @@ class MIND_DGL(DGLDataset):
         """
         self._print('Loading raw data ...')
         train_behaviors_df, train_news_df, train_entity_embedding_dict = \
-            load_MIND('{}/MIND{}_train'.format(self.cfg['dataset_dir'], self.cfg['mind_version']), force_reload=self._force_reload)
+            load_MIND('{}/MIND{}_train'.format(
+                self.cfg['dataset_dir'], self.cfg['mind_version']), force_reload=self._force_reload)
         dev_behaviors_df, dev_news_df, dev_entity_embedding_dict = \
-            load_MIND('{}/MIND{}_dev'.format(self.cfg['dataset_dir'], self.cfg['mind_version']), force_reload=self._force_reload)
+            load_MIND('{}/MIND{}_dev'.format(self.cfg['dataset_dir'],
+                      self.cfg['mind_version']), force_reload=self._force_reload)
 
         self._print('Making User-List and News-List ...')
         # User List and News List
-        self._user = np.unique(np.array(list(train_behaviors_df['User-ID']) + list(dev_behaviors_df['User-ID'])))  # [User-ID]
-        userid2uid = {v: k for k, v in enumerate(self._user)}  # uid: the NID of user nodes in the graph
-        self._news = get_news_list(train_behaviors_df, dev_behaviors_df)  # [News-ID]
-        newsid2nid = {v: k for k, v in enumerate(self._news)}  # nid: the NID of news nodes in the graph
+        self._user = np.unique(np.array(list(
+            # [User-ID]
+            train_behaviors_df['User-ID']) + list(dev_behaviors_df['User-ID'])))
+        # uid: the NID of user nodes in the graph
+        userid2uid = {v: k for k, v in enumerate(self._user)}
+        self._news = get_news_list(
+            train_behaviors_df, dev_behaviors_df)  # [News-ID]
+        # nid: the NID of news nodes in the graph
+        newsid2nid = {v: k for k, v in enumerate(self._news)}
 
         self._print('Extracting User-News ...')
         # get u-n
         # For graph: history, train_pos, train_neg, dev_pos, dev_neg
         # For dataloader: session, sample
         train_history_actions, train_positive_actions, train_negative_actions, train_session_positive, train_session_negative = \
-            get_user_news_link(train_behaviors_df, userid2uid, newsid2nid, '{}/MIND{}_train'.format(self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
+            get_user_news_link(train_behaviors_df, userid2uid, newsid2nid, '{}/MIND{}_train'.format(
+                self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
         dev_history_actions, dev_positive_actions, dev_negative_actions, dev_session_positive, dev_session_negative = \
-            get_user_news_link(dev_behaviors_df, userid2uid, newsid2nid, '{}/MIND{}_dev'.format(self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
-        history_actions = np.unique(np.concatenate([train_history_actions, dev_history_actions]), axis=0)
+            get_user_news_link(dev_behaviors_df, userid2uid, newsid2nid, '{}/MIND{}_dev'.format(
+                self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
+        history_actions = np.unique(np.concatenate(
+            [train_history_actions, dev_history_actions]), axis=0)
         # session & sample -> save to self for constucting dataloader
         self._train_session_positive = train_session_positive
         self._train_session_negative = train_session_negative
@@ -101,15 +111,20 @@ class MIND_DGL(DGLDataset):
 
         # self._print('Extracting News-Entity ...')
         # processing enid and get n-e
-        entity_embedding_dict = {**train_entity_embedding_dict, **dev_entity_embedding_dict}
+        entity_embedding_dict = {
+            **train_entity_embedding_dict, **dev_entity_embedding_dict}
         train_news_entity_link = get_news_entity_link(train_news_df, newsid2nid, entity_embedding_dict, '{}/MIND{}_train'.format(
             self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
         dev_news_entity_link = get_news_entity_link(dev_news_df, newsid2nid, entity_embedding_dict, '{}/MIND{}_dev'.format(
             self.cfg['dataset_dir'], self.cfg['mind_version']), self._force_reload)
-        news_entity_link = np.unique(np.concatenate([train_news_entity_link, dev_news_entity_link]), axis=0)
-        self._entity = [int(v) for v in np.unique(news_entity_link[:, 1]).tolist()]
-        entityid2enid = {v: k for k, v in enumerate(self._entity)}  # WikidataIds -> enid
-        news_entity_link[:, 1] = [entityid2enid[oid] for oid in news_entity_link[:, 1]]
+        news_entity_link = np.unique(np.concatenate(
+            [train_news_entity_link, dev_news_entity_link]), axis=0)
+        self._entity = [int(v)
+                        for v in np.unique(news_entity_link[:, 1]).tolist()]
+        entityid2enid = {v: k for k, v in enumerate(
+            self._entity)}  # WikidataIds -> enid
+        news_entity_link[:, 1] = [entityid2enid[oid]
+                                  for oid in news_entity_link[:, 1]]
 
         # self._print('Extracting News-Word ...')
         # # get n-w and emb_w(wid -> emb)
@@ -131,7 +146,8 @@ class MIND_DGL(DGLDataset):
         un_df = pd.DataFrame(history_actions, columns=['uid', 'nid'])
         ne_df = pd.DataFrame(news_entity_link, columns=['nid', 'enid'])
         # nw_df = pd.DataFrame(news_word_link, columns=['nid', 'wid'])
-        ue_df = un_df.join(ne_df.set_index('nid'), on='nid', how='inner').sort_values(by=['uid'])[['uid', 'enid']]
+        ue_df = un_df.join(ne_df.set_index('nid'), on='nid',
+                           how='inner').sort_values(by=['uid'])[['uid', 'enid']]
         # uw_df = un_df.join(nw_df.set_index('nid'), on='nid', how='inner').sort_values(by=['uid'])[['uid', 'wid']]
 
         _links = {
@@ -151,7 +167,8 @@ class MIND_DGL(DGLDataset):
         cur_relations = list(_links.keys())
         for relation in cur_relations:
             reverse_relation = '{}_r'.format(relation[1])
-            _links[(relation[2], reverse_relation, relation[0])] = [[p[1], p[0]] for p in _links[relation]]
+            _links[(relation[2], reverse_relation, relation[0])] = [
+                [p[1], p[0]] for p in _links[relation]]
             self._reverse_etypes[relation[1]] = reverse_relation
             self._reverse_etypes[reverse_relation] = relation[1]
 
@@ -167,57 +184,76 @@ class MIND_DGL(DGLDataset):
             self._num_link[link_type[1]] = len(_links[link_type])
 
         self._print('Building Graph ...')
-        self._graph = dgl.heterograph(_links, num_nodes_dict=self._num_node, idtype=torch.int32)  # need save
+        self._graph = dgl.heterograph(
+            _links, num_nodes_dict=self._num_node, idtype=torch.int32)  # need save
 
         self._print('Processing Nodes Atrrs ...')
         _embedding = {node_type: {} for node_type in _nodes}
 
         self._print('Processing News')
-        _categories = pd.concat([train_news_df, dev_news_df], axis=0)['Category'].unique()
-        _news_category_map = {name: i for i, name in enumerate(_categories)}  # category -> cateid
-        _subcategories = pd.concat([train_news_df, dev_news_df], axis=0)['SubCategory'].unique()
-        _news_subcategory_map = {name: i for i, name in enumerate(_subcategories)}  # subcategory -> subcateid
+        _categories = pd.concat([train_news_df, dev_news_df], axis=0)[
+            'Category'].unique()
+        _news_category_map = {name: i for i, name in enumerate(
+            _categories)}  # category -> cateid
+        _subcategories = pd.concat([train_news_df, dev_news_df], axis=0)[
+            'SubCategory'].unique()
+        _news_subcategory_map = {name: i for i, name in enumerate(
+            _subcategories)}  # subcategory -> subcateid
 
-        _embedding['news']['News_Title_Embedding'] = torch.zeros([self._num_node['news'], 384])
-        _embedding['news']['News_Abstract_Embedding'] = torch.zeros([self._num_node['news'], 384])
+        _embedding['news']['News_Title_Embedding'] = torch.zeros(
+            [self._num_node['news'], 384])
+        _embedding['news']['News_Abstract_Embedding'] = torch.zeros(
+            [self._num_node['news'], 384])
         _news_category = torch.zeros([self._num_node['news']])
         _news_subcategory = torch.zeros([self._num_node['news']])
         _empty_news_emb = 0
         for nid, news_id in enumerate(self._news):
             if news_id in train_news_df.index:
-                _embedding['news']['News_Title_Embedding'][nid] = torch.Tensor(train_news_df['Title-Emb'][news_id])
-                _embedding['news']['News_Abstract_Embedding'][nid] = torch.Tensor(train_news_df['Abstract-Emb'][news_id])
+                _embedding['news']['News_Title_Embedding'][nid] = torch.Tensor(
+                    train_news_df['Title-Emb'][news_id])
+                _embedding['news']['News_Abstract_Embedding'][nid] = torch.Tensor(
+                    train_news_df['Abstract-Emb'][news_id])
                 _news_category[nid] = _news_category_map[train_news_df['Category'][news_id]]
                 _news_subcategory[nid] = _news_subcategory_map[train_news_df['SubCategory'][news_id]]
             elif news_id in dev_news_df.index:
-                _embedding['news']['News_Title_Embedding'][nid] = torch.Tensor(dev_news_df['Title-Emb'][news_id])
-                _embedding['news']['News_Abstract_Embedding'][nid] = torch.Tensor(dev_news_df['Abstract-Emb'][news_id])
+                _embedding['news']['News_Title_Embedding'][nid] = torch.Tensor(
+                    dev_news_df['Title-Emb'][news_id])
+                _embedding['news']['News_Abstract_Embedding'][nid] = torch.Tensor(
+                    dev_news_df['Abstract-Emb'][news_id])
                 _news_category[nid] = _news_category_map[dev_news_df['Category'][news_id]]
                 _news_subcategory[nid] = _news_subcategory_map[dev_news_df['SubCategory'][news_id]]
             if _embedding['news']['News_Title_Embedding'][nid].sum() == 0 or _embedding['news']['News_Abstract_Embedding'][nid].sum() == 0:
                 _empty_news_emb += 1
         _embedding['news']['CateID'] = _news_category.long()  # cateid
         _embedding['news']['SubCateID'] = _news_subcategory.long()  # subcateid
-        sentence_model = SentenceTransformer("all-MiniLM-L6-v2")##all-mpnet-base-v2
+        sentence_model = SentenceTransformer(
+            "all-MiniLM-L6-v2")  # all-mpnet-base-v2
         category_embeddings = sentence_model.encode(_categories)
         subcategory_embeddings = sentence_model.encode(_subcategories)
-        _embedding['news']['Category'] = torch.mm(torch.nn.functional.one_hot(_news_category.long()).float(), torch.Tensor(category_embeddings))
-        _embedding['news']['SubCategory'] = torch.mm(torch.nn.functional.one_hot(_news_subcategory.long()).float(), torch.Tensor(subcategory_embeddings))
-        print('Num of Empty News Embedding: {} in {}'.format(_empty_news_emb, len(_nodes['news'])))
+        _embedding['news']['Category'] = torch.mm(torch.nn.functional.one_hot(
+            _news_category.long()).float(), torch.Tensor(category_embeddings))
+        _embedding['news']['SubCategory'] = torch.mm(torch.nn.functional.one_hot(
+            _news_subcategory.long()).float(), torch.Tensor(subcategory_embeddings))
+        print('Num of Empty News Embedding: {} in {}'.format(
+            _empty_news_emb, len(_nodes['news'])))
 
         # self._print('Processing Entity')
         # new entity id -> emb
-        _embedding['entity']['Entity_Embedding'] = torch.zeros([self._num_node['entity'], 100])  # 100 as entity embedding dim
+        _embedding['entity']['Entity_Embedding'] = torch.zeros(
+            [self._num_node['entity'], 100])  # 100 as entity embedding dim
         for id, oid in enumerate(self._entity):  # WikidataID
             entity_wiki_id = 'Q{}'.format(oid)
-            _embedding['entity']['Entity_Embedding'][id] = torch.Tensor(entity_embedding_dict[entity_wiki_id])
+            _embedding['entity']['Entity_Embedding'][id] = torch.Tensor(
+                entity_embedding_dict[entity_wiki_id])
 
         # self._print('Processing Word')
         # _embedding['word']['Word_Embedding'] = torch.Tensor(word_emb)
 
         self._print('Processing User')
-        _embedding['user']['Category'] = torch.ones([self._num_node['user'], len(_categories)]) * 1e-10  # avoid zero
-        _embedding['user']['SubCategory'] = torch.ones([self._num_node['user'], len(_subcategories)]) * 1e-10
+        _embedding['user']['Category'] = torch.ones(
+            [self._num_node['user'], len(_categories)]) * 1e-10  # avoid zero
+        _embedding['user']['SubCategory'] = torch.ones(
+            [self._num_node['user'], len(_subcategories)]) * 1e-10
         for i in range(history_actions.shape[0]):
             uid = history_actions[i][0]
             nid = history_actions[i][1]
@@ -232,18 +268,20 @@ class MIND_DGL(DGLDataset):
                 scid = _news_subcategory_map[dev_news_df['SubCategory'][news_id]]
                 _embedding['user']['Category'][uid, cid] += 1
                 _embedding['user']['SubCategory'][uid, scid] += 1
-        _embedding['user']['Category'] = torch.mm(_embedding['user']['Category'], torch.Tensor(category_embeddings))
-        _embedding['user']['SubCategory'] = torch.mm(_embedding['user']['SubCategory'], torch.Tensor(subcategory_embeddings))
+        _embedding['user']['Category'] = torch.mm(
+            _embedding['user']['Category'], torch.Tensor(category_embeddings))
+        _embedding['user']['SubCategory'] = torch.mm(
+            _embedding['user']['SubCategory'], torch.Tensor(subcategory_embeddings))
 
         # Mounting
         for ntype in _embedding:
             for emb_type in _embedding[ntype]:
                 self._graph.nodes[ntype].data[emb_type] = _embedding[ntype][emb_type]
-        
+
         # # node2vec
         # self._print("Perform training node2vec model")
-        # news2vec, user2vec = node2vec(self, self.cfg['dataset_dir'], force_reload=self._force_reload) 
-        
+        # news2vec, user2vec = node2vec(self, self.cfg['dataset_dir'], force_reload=self._force_reload)
+
         # # self.graph.nodes['entity'].data['Node2Vec'] = entity2vec
         # self.graph.nodes['news'].data['Node2Vec'] = news2vec
         # self.graph.nodes['user'].data['Node2Vec'] = user2vec
@@ -286,7 +324,6 @@ class MIND_DGL(DGLDataset):
             self._graph.edges['neg_train_r'].data['Time'].shape)
         self._graph.edges['neg_dev_r'].data['Label'] = torch.zeros(
             self._graph.edges['neg_dev_r'].data['Time'].shape)
-   
 
     def save(self):
         r"""
@@ -318,8 +355,10 @@ class MIND_DGL(DGLDataset):
         self._num_node = json.loads(info['num_node'])
         self._num_link = json.loads(info['num_link'])
         self._reverse_etypes = json.loads(info['reverse_etypes'])
-        self._train_session_positive = unseq_list(info['train_session_positive'])
-        self._train_session_negative = unseq_list(info['train_session_negative'])
+        self._train_session_positive = unseq_list(
+            info['train_session_positive'])
+        self._train_session_negative = unseq_list(
+            info['train_session_negative'])
         self._dev_session_positive = unseq_list(info['dev_session_positive'])
         self._dev_session_negative = unseq_list(info['dev_session_negative'])
         # self._user = info['user'].split('\n')
@@ -357,9 +396,12 @@ class MIND_DGL(DGLDataset):
         return self._graph
 
     def get_gnn_train_loader(self, base_etypes, num_layers, batching=False):
-        train_sampled_datasets = building_training_dataset(self._train_session_positive, self._train_session_negative, self.cfg["gnn_neg_ratio"])
-        pos_edges = torch.Tensor(train_sampled_datasets[:, 0]).type(torch.int32)
-        neg_edges = torch.Tensor(train_sampled_datasets[:, 1:]).type(torch.int32)  
+        train_sampled_datasets = building_training_dataset(
+            self._train_session_positive, self._train_session_negative, self.cfg["gnn_neg_ratio"])
+        pos_edges = torch.Tensor(
+            train_sampled_datasets[:, 0]).type(torch.int32)
+        neg_edges = torch.Tensor(
+            train_sampled_datasets[:, 1:]).type(torch.int32)
 
         shuffled_id = np.array(list(range(pos_edges.shape[0])))
         np.random.shuffle(shuffled_id)
@@ -368,9 +410,11 @@ class MIND_DGL(DGLDataset):
 
         # train_sampler = "MultiLayerFull"
         if self.cfg['train_sampler'] == 'MultiLayer':
-            sampler = dgl.dataloading.MultiLayerNeighborSampler(self.cfg['train_sampler_param'], replace=False)
+            sampler = dgl.dataloading.MultiLayerNeighborSampler(
+                self.cfg['train_sampler_param'], replace=False)
         elif self.cfg['train_sampler'] == 'SimilarityWeightedMultiLayer' or self.cfg['train_sampler'] == 'InverseDegreeWeightedMultiLayer':
-            sampler = dgl.dataloading.MultiLayerNeighborSampler(self.cfg['train_sampler_param'], prob='Sampling_Weight', replace=False)
+            sampler = dgl.dataloading.MultiLayerNeighborSampler(
+                self.cfg['train_sampler_param'], prob='Sampling_Weight', replace=False)
         elif self.cfg['train_sampler'] == 'MultiLayerFull':
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(num_layers)
         else:
@@ -384,14 +428,17 @@ class MIND_DGL(DGLDataset):
         neg_collator = dgl.dataloading.EdgeCollator(
             g=self._graph, eids={'neg_train': neg_edges_shuffled.flatten(start_dim=0)}, graph_sampler=sampler, g_sampling=base_graph,
         )
-        
+
         if self.cfg["batch_size"] > 0 and batching:
             pos_dataloader = DataLoader(pos_collator.dataset, collate_fn=pos_collator.collate,
-                                        batch_size=self.cfg["batch_size"], sampler=RandomSamplerWithReplacement(pos_collator.dataset, self.cfg["batch_size"]),
+                                        batch_size=self.cfg["batch_size"], sampler=RandomSamplerWithReplacement(
+                                            pos_collator.dataset, self.cfg["batch_size"]),
                                         drop_last=False,  num_workers=1)
             neg_dataloader = DataLoader(neg_collator.dataset, collate_fn=neg_collator.collate,
-                                        batch_size=self.cfg["batch_size"] * self.cfg['gnn_neg_ratio'], 
-                                        sampler=RandomSamplerWithReplacement(neg_collator.dataset, self.cfg["batch_size"] * self.cfg['gnn_neg_ratio']),
+                                        batch_size=self.cfg["batch_size"] *
+                                        self.cfg['gnn_neg_ratio'],
+                                        sampler=RandomSamplerWithReplacement(
+                                            neg_collator.dataset, self.cfg["batch_size"] * self.cfg['gnn_neg_ratio']),
                                         drop_last=False,  num_workers=1)
         else:
             pos_dataloader = DataLoader(pos_collator.dataset, collate_fn=pos_collator.collate,
@@ -401,40 +448,46 @@ class MIND_DGL(DGLDataset):
                                         batch_size=len(neg_collator.dataset) * self.cfg['gnn_neg_ratio'], shuffle=False,
                                         drop_last=False,  num_workers=1)
 
-                                    
         return pos_dataloader, neg_dataloader
 
     def get_dev_session_loader(self, shuffle):
-        dev_dataset = SessionDataset(self._dev_session_positive, self._dev_session_negative)
+        dev_dataset = SessionDataset(
+            self._dev_session_positive, self._dev_session_negative)
         # shuffle=False if Decaying is activted
         return DataLoader(dev_dataset, batch_size=1, shuffle=shuffle, num_workers=1)
-    
+
     def get_val_session_loader(self, size):
         if size == 0:
-            dev_dataset = SessionDataset(self._dev_session_positive, self._dev_session_negative)
+            dev_dataset = SessionDataset(
+                self._dev_session_positive, self._dev_session_negative)
         else:
             if self._indices == None:
-                self._indices = random.sample(range(len(self._dev_session_positive)), size)
-            dev_dataset = SessionDataset([self._dev_session_positive[i] for i in self._indices], [self._dev_session_negative[i] for i in self._indices])
-        
+                self._indices = random.sample(
+                    range(len(self._dev_session_positive)), size)
+            dev_dataset = SessionDataset([self._dev_session_positive[i] for i in self._indices], [
+                                         self._dev_session_negative[i] for i in self._indices])
+
         # shuffle=False if Decaying is activted
         return DataLoader(dev_dataset, batch_size=1, shuffle=True, num_workers=1)
 
-    def get_gnn_dev_node_loader(self, etypes, num_layers):  # Dev - for Generate Node Representations
-        pos_edges = torch.Tensor(list(range(self._num_link['pos_dev_r']))).type(torch.int32)
-        neg_edges = torch.Tensor(list(range(self._num_link['neg_dev_r']))).type(torch.int32)
-        sub_g = dgl.edge_subgraph(self._graph, {('news', 'pos_dev_r', 'user'): pos_edges, ('news', 'neg_dev_r', 'user'): neg_edges})
+    # Dev - for Generate Node Representations
+    def get_gnn_dev_node_loader(self, etypes, num_layers):
+        pos_edges = torch.Tensor(
+            list(range(self._num_link['pos_dev_r']))).type(torch.int32)
+        neg_edges = torch.Tensor(
+            list(range(self._num_link['neg_dev_r']))).type(torch.int32)
+        sub_g = dgl.edge_subgraph(self._graph, {(
+            'news', 'pos_dev_r', 'user'): pos_edges, ('news', 'neg_dev_r', 'user'): neg_edges})
 
         base_graph = self._graph.edge_type_subgraph(etypes)
-        
-
 
         sampler = dgl.dataloading.MultiLayerFullNeighborSampler(num_layers)
 
+        user_collator = dgl.dataloading.NodeCollator(
+            base_graph, {'user': sub_g.dstdata['_ID']['user']}, sampler)
+        news_collator = dgl.dataloading.NodeCollator(
+            base_graph, {'news': sub_g.srcdata['_ID']['news']}, sampler)
 
-        user_collator = dgl.dataloading.NodeCollator(base_graph, {'user': sub_g.dstdata['_ID']['user']}, sampler)
-        news_collator = dgl.dataloading.NodeCollator(base_graph, {'news': sub_g.srcdata['_ID']['news']}, sampler)
-        
         user_dataloader = torch.utils.data.DataLoader(
             user_collator.dataset, collate_fn=user_collator.collate,
             batch_size=len(user_collator.dataset), shuffle=True, drop_last=False, num_workers=1
@@ -468,11 +521,13 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.v)
 
+
 class RandomSamplerWithReplacement(Sampler):
     def __init__(self, data_source, batch_size, num_batches=1000000):
         self.data_source = data_source
         self.batch_size = batch_size
-        self.num_batches = num_batches or len(self.data_source) // self.batch_size
+        self.num_batches = num_batches or len(
+            self.data_source) // self.batch_size
 
     def __iter__(self):
         for _ in range(self.num_batches * self.batch_size):

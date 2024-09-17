@@ -13,16 +13,6 @@ class BaseGNN(nn.Module, ABC):
     """Abstract base class for GNN"""
     
     @abstractmethod
-    def has_representation_layer(self) -> bool:
-        """Check if the model has a representation layer
-
-        Returns
-        -------
-        bool
-            True if the model has a representation layer
-        """
-
-    @abstractmethod
     def get_nth_layer(self, n: int) -> nn.Module:
         """Get the nth layer of the model
 
