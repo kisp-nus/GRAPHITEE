@@ -1,0 +1,11 @@
+pip install tqdm
+pip install torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+pip install dgl==2.1.0 -f https://data.dgl.ai/wheels/torch-2.2/repo.html
+pip install hydra-core --upgrade
+pip install cryptography
+pip install scikit-learn
+pip install torchmetrics
+pip install torch_geometric
+pip install pydantic
+pip install boto3
+
