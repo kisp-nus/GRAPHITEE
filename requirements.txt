@@ -1,0 +1,30 @@
+# Made on 08-07-2024 using python 3.9.16 for CPU training
+
+# Direct links to package files or directories
+--find-links https://data.dgl.ai/wheels/torch-2.1/repo.html
+--find-links https://download.pytorch.org/whl/torch
+
+cryptography==42.0.2
+dgl==2.1.0
+duckdb==0.10.2
+hydra-core==1.3.2
+keybert==0.8.4
+nltk==3.8.1
+numpy==1.26.4
+omegaconf==2.3.0
+pandas==2.2.2
+requests==2.31.0
+scikit-learn==1.4.2
+sentence-transformers==2.7.0
+torch==2.2.1+cpu
+torch_geometric==2.5.3
+torchmetrics==1.4.0
+tqdm==4.66.4
+wandb==0.17.2
+pydantic==2.7.1
+boto3
+s3fs
+
+
+
+# WARNING: Dgl + pytorch broke because of torchdata 0.8.0, please us pip install --no-deps torchdata==0.7.0
